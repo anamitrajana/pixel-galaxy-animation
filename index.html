@@ -202,16 +202,7 @@
             progress = 1;
             phase = 2;
           }
-        } else if (phase === 2 && elapsedTime > 10) {
-          phase = 3; // Start transition to galaxy
-        } else if (phase === 3) {
-          progress -= delta * 0.25; // 4 seconds transition
-          if (progress <= 0) {
-            progress = 0;
-            phase = 0;
-            elapsedTime = 0;
-          }
-        }
+        } 
         
         // Update positions
         const positions = particles.geometry.attributes.position.array;
