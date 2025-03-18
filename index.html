@@ -1,418 +1,295 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="ie=edge">
-  <!-- Add Content Security Policy to allow necessary resources -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline';">
-  <title>Galaxy Animation</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
-    html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background-color: #000;
-    }
-    
-    #canvas-container {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-    }
-    
-    /* Add a fallback message for browsers without WebGL */
-    .fallback-message {
-      display: none;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: white;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      width: 80%;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Galaxy Animation</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #000;
+  }
+  
+  #animation-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+  
+  #error-message {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    width: 80%;
+  }
+</style>
 </head>
 <body>
-  <div id="canvas-container"></div>
-  <div class="fallback-message">
-    <p>Your browser doesn't seem to support WebGL or it's disabled.</p>
-    <p>Please try a different browser or enable hardware acceleration.</p>
-  </div>
+<div id="animation-container"></div>
+<div id="error-message">
+  <p>Unable to display the animation.</p>
+  <p>Please try a different browser or check your settings.</p>
+</div>
 
-  <!-- Import Three.js from CDN with specific version -->
-  <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<!-- Import Three.js from CDN - using UMD version to avoid import/export issues -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.147.0/three.min.js"></script>
+
+<script>
+  // Wait for window to fully load before initializing
+  window.addEventListener('load', function() {
+    setTimeout(initAnimation, 500); // Add a delay to ensure everything is loaded
+  });
   
-  <script>
-    // Check for WebGL support first
-    function webglAvailable() {
-      try {
-        const canvas = document.createElement('canvas');
-        return !!(window.WebGLRenderingContext && 
-          (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
-      } catch (e) {
-        return false;
+  function initAnimation() {
+    try {
+      // Create a unique ID for this instance
+      const uniqueId = 'galaxy-animation-' + Math.random().toString(36).substr(2, 9);
+      
+      // Create a container with the unique ID
+      const container = document.getElementById('animation-container');
+      const canvas = document.createElement('canvas');
+      canvas.id = uniqueId;
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      container.appendChild(canvas);
+      
+      // Check if WebGL is available
+      if (!isWebGLAvailable()) {
+        throw new Error('WebGL not supported');
       }
-    }
-
-    if (!webglAvailable()) {
-      document.querySelector('.fallback-message').style.display = 'block';
-      document.getElementById('canvas-container').style.display = 'none';
-    } else {
+      
       // Configuration
-      const PARTICLE_COUNT = 3000; // Reduced for better performance
-      const EARTH_RADIUS = 3;
-      const PRIMARY_COLOR = new THREE.Color("#F15A24"); // Orange theme color
-      const HOVER_RADIUS = 2; // Radius of influence for hover effect
-      const HOVER_STRENGTH = 0.8; // Strength of the hover dispersion effect
-      const ANIMATION_DURATION = 60; // Total duration of one complete animation cycle in seconds
-      const INITIAL_TRANSITION_DURATION = 7; // Duration of the initial transition in seconds
-      const HOLD_DURATION = 3; // Duration to hold the Earth shape
-      const cycleTime = 60
-
-      // Easing functions
-      function easeInOutCubic(x) {
-        return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
-      }
-
-      function easeOutQuint(x) {
-        return 1 - Math.pow(1 - x, 5);
-      }
-
-      // Main class
-      class GalaxyAnimation {
-        constructor(container) {
-          this.container = container;
-          this.width = container.clientWidth || window.innerWidth;
-          this.height = container.clientHeight || window.innerHeight;
-          this.mousePosition = new THREE.Vector2();
-          this.raycaster = new THREE.Raycaster();
-          this.clock = new THREE.Clock();
-          this.animationStartTime = 0;
-          this.animationStarted = false;
-          this.frameId = null;
-
-          // Bind methods to ensure proper 'this' context
-          this.animate = this.animate.bind(this);
-          this.handleResize = this.handleResize.bind(this);
-          this.handleMouseMove = this.handleMouseMove.bind(this);
-
-          this.init();
-          this.createParticles();
-          this.setupEvents();
-          
-          // Start animation with a slight delay to ensure everything is loaded
-          setTimeout(() => {
-            this.animate();
-          }, 100);
-        }
-
-        init() {
-          // Create scene
-          this.scene = new THREE.Scene();
-          
-          // Create camera
-          this.camera = new THREE.PerspectiveCamera(
-            75, 
-            this.width / this.height, 
-            0.1, 
-            1000
-          );
-          this.camera.position.z = 10;
-          
-          // Create renderer with explicit parameters for Chrome
-          this.renderer = new THREE.WebGLRenderer({ 
-            antialias: true, 
-            alpha: true,
-            powerPreference: 'high-performance',
-            canvas: document.createElement('canvas')
-          });
-          this.renderer.setSize(this.width, this.height);
-          this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-          this.container.appendChild(this.renderer.domElement);
-          
-          // Add lights
-          const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-          this.scene.add(ambientLight);
-          
-          const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-          directionalLight.position.set(5, 3, 5);
-          this.scene.add(directionalLight);
-        }
-
-        createParticles() {
-          // Create galaxy positions
-          this.galaxyPositions = new Float32Array(PARTICLE_COUNT * 3);
-          this.colors = new Float32Array(PARTICLE_COUNT * 3);
-          
-          for (let i = 0; i < PARTICLE_COUNT; i++) {
-            // Random positions in a spherical distribution for galaxy
-            const radius = 10 + Math.random() * 10;
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos(2 * Math.random() - 1);
-            
-            this.galaxyPositions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
-            this.galaxyPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
-            this.galaxyPositions[i * 3 + 2] = radius * Math.cos(phi);
-            
-            // Colors with orange theme
-            const intensity = 0.5 + Math.random() * 0.5;
-            this.colors[i * 3] = PRIMARY_COLOR.r * intensity; // Red
-            this.colors[i * 3 + 1] = PRIMARY_COLOR.g * intensity; // Green
-            this.colors[i * 3 + 2] = PRIMARY_COLOR.b * intensity; // Blue
-          }
-          
-          // Create Earth positions
-          this.earthPositions = new Float32Array(PARTICLE_COUNT * 3);
-          
-          for (let i = 0; i < PARTICLE_COUNT; i++) {
-            // Create points distributed on a sphere (Earth)
-            const phi = Math.acos(2 * Math.random() - 1);
-            const theta = Math.random() * Math.PI * 2;
-            
-            this.earthPositions[i * 3] = EARTH_RADIUS * Math.sin(phi) * Math.cos(theta);
-            this.earthPositions[i * 3 + 1] = EARTH_RADIUS * Math.sin(phi) * Math.sin(theta);
-            this.earthPositions[i * 3 + 2] = EARTH_RADIUS * Math.cos(phi);
-          }
-          
-          // Create particles geometry
-          const geometry = new THREE.BufferGeometry();
-          geometry.setAttribute('position', new THREE.BufferAttribute(this.galaxyPositions.slice(), 3));
-          geometry.setAttribute('color', new THREE.BufferAttribute(this.colors.slice(), 3));
-          
-          // Create particles material
-          const material = new THREE.PointsMaterial({
-            size: 0.08,
-            sizeAttenuation: true,
-            vertexColors: true,
-            transparent: true,
-            opacity: 0.8
-          });
-          
-          // Create particles system
-          this.particles = new THREE.Points(geometry, material);
-          this.scene.add(this.particles);
-        }
-
-        handleMouseMove(event) {
-          // Calculate mouse position relative to the container
-          const rect = this.renderer.domElement.getBoundingClientRect();
-          this.mousePosition.x = ((event.clientX - rect.left) / this.width) * 2 - 1;
-          this.mousePosition.y = -((event.clientY - rect.top) / this.height) * 2 + 1;
-        }
-
-        handleResize() {
-          // Update sizes
-          this.width = this.container.clientWidth || window.innerWidth;
-          this.height = this.container.clientHeight || window.innerHeight;
-          
-          // Update camera
-          this.camera.aspect = this.width / this.height;
-          this.camera.updateProjectionMatrix();
-          
-          // Update renderer
-          this.renderer.setSize(this.width, this.height);
-          this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        }
-
-        setupEvents() {
-          // Mouse move event
-          window.addEventListener('mousemove', this.handleMouseMove);
-          
-          // Resize event
-          window.addEventListener('resize', this.handleResize);
-          
-          // Handle iframe resize
-          window.addEventListener('message', (event) => {
-            if (event.data && event.data.type === 'resize') {
-              const { width, height } = event.data;
-              if (width && height) {
-                this.width = width;
-                this.height = height;
-                
-                // Update camera
-                this.camera.aspect = this.width / this.height;
-                this.camera.updateProjectionMatrix();
-                
-                // Update renderer
-                this.renderer.setSize(this.width, this.height);
-              }
-            }
-          });
-        }
-
-        animate() {
-          this.frameId = requestAnimationFrame(this.animate);
-          
-          try {
-            const currentTime = this.clock.getElapsedTime();
-            
-            // Initialize animation start time
-            if (!this.animationStarted) {
-              this.animationStartTime = currentTime;
-              this.animationStarted = true;
-            }
-            
-            // Calculate time since animation started
-            const elapsedTime = currentTime - this.animationStartTime;
-            
-            // Calculate animation cycle time
-            const cycleTime = elapsedTime % ANIMATION_DURATION;
-            
-            // Calculate progress based on which phase of the animation we're in
-            let progress = 0;
-            
-            if (cycleTime < INITIAL_TRANSITION_DURATION) {
-              // Initial slow transition to Earth with easing
-              const phaseProgress = cycleTime / INITIAL_TRANSITION_DURATION;
-              progress = easeOutQuint(phaseProgress);
-            } else if (cycleTime < INITIAL_TRANSITION_DURATION + HOLD_DURATION) {
-              // Hold Earth shape
-              progress = 1;
-            } else if (cycleTime < INITIAL_TRANSITION_DURATION + HOLD_DURATION + RETURN_TRANSITION_DURATION) {
-              // Hold galaxy shape for the remainder of the cycle
-              progress = 0;
-            }
-            
-            // Create a raycaster for mouse interaction
-            this.raycaster.setFromCamera(this.mousePosition, this.camera);
-            
-            // Calculate a point in 3D space where the mouse is pointing
-            const mousePoint = new THREE.Vector3();
-            this.raycaster.ray.at(10, mousePoint); // 10 units into the scene
-            
-            // Update each particle position
-            const positionAttribute = this.particles.geometry.getAttribute('position');
-            
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-              const i3 = i * 3;
-              
-              // Calculate the interpolated position based on animation progress
-              const galaxyX = this.galaxyPositions[i3];
-              const galaxyY = this.galaxyPositions[i3 + 1];
-              const galaxyZ = this.galaxyPositions[i3 + 2];
-              
-              const earthX = this.earthPositions[i3];
-              const earthY = this.earthPositions[i3 + 1];
-              const earthZ = this.earthPositions[i3 + 2];
-              
-              // Directly interpolate between galaxy and earth positions based on animation progress
-              let x = galaxyX * (1 - progress) + earthX * progress;
-              let y = galaxyY * (1 - progress) + earthY * progress;
-              let z = galaxyZ * (1 - progress) + earthZ * progress;
-              
-              // Create a particle position vector for hover effect
-              const particlePos = new THREE.Vector3(x, y, z);
-              
-              // Calculate distance to mouse ray
-              const distanceToMouse = particlePos.distanceTo(mousePoint);
-              
-              // Apply hover dispersion effect if close to mouse
-              if (distanceToMouse < HOVER_RADIUS) {
-                // Calculate repel force based on distance (stronger when closer)
-                const repelStrength = (1 - distanceToMouse / HOVER_RADIUS) * HOVER_STRENGTH;
-                
-                // Direction from mouse to particle
-                const repelDir = new THREE.Vector3().subVectors(particlePos, mousePoint).normalize();
-                
-                // Apply repel force
-                x += repelDir.x * repelStrength;
-                y += repelDir.y * repelStrength;
-                z += repelDir.z * repelStrength;
-              }
-              
-              // Update the position
-              positionAttribute.setXYZ(i, x, y, z);
-            }
-            
-            positionAttribute.needsUpdate = true;
-            
-            // Rotate the entire points system (slower during Earth formation)
-            const rotationSpeed = 0.001 * (1 - progress * 0.7);
-            this.particles.rotation.y += rotationSpeed;
-            
-            // Render
-            this.renderer.render(this.scene, this.camera);
-          } catch (error) {
-            console.error("Animation error:", error);
-            cancelAnimationFrame(this.frameId);
-            
-            // Try to recover
-            setTimeout(() => {
-              this.animate();
-            }, 1000);
-          }
-        }
-
-        // Clean up method to prevent memory leaks
-        dispose() {
-          cancelAnimationFrame(this.frameId);
-          
-          window.removeEventListener('mousemove', this.handleMouseMove);
-          window.removeEventListener('resize', this.handleResize);
-          
-          // Dispose of Three.js resources
-          this.particles.geometry.dispose();
-          this.particles.material.dispose();
-          this.renderer.dispose();
-          
-          // Remove from DOM
-          if (this.renderer.domElement && this.renderer.domElement.parentNode) {
-            this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
-          }
-        }
-      }
-
-      // Initialize the animation when the page is loaded
-      let galaxyAnimation = null;
+      const PARTICLE_COUNT = 2000;
+      const EARTH_RADIUS = 2;
+      const PRIMARY_COLOR = new THREE.Color("#F15A24");
       
-      function initAnimation() {
-        try {
-          const container = document.getElementById('canvas-container');
-          if (galaxyAnimation) {
-            galaxyAnimation.dispose();
-          }
-          galaxyAnimation = new GalaxyAnimation(container);
-          
-          // Send ready message to parent (Webflow)
-          if (window.parent) {
-            window.parent.postMessage({ type: 'ready' }, '*');
-          }
-        } catch (error) {
-          console.error("Initialization error:", error);
-          document.querySelector('.fallback-message').style.display = 'block';
-        }
-      }
+      // Create scene
+      const scene = new THREE.Scene();
       
-      // Wait for DOM and resources to be fully loaded
-      if (document.readyState === 'complete') {
-        initAnimation();
-      } else {
-        window.addEventListener('load', initAnimation);
-      }
+      // Create camera
+      const width = container.clientWidth || window.innerWidth;
+      const height = container.clientHeight || window.innerHeight;
+      const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+      camera.position.z = 10;
       
-      // Notify parent when iframe is resized
-      window.addEventListener('resize', () => {
-        if (window.parent) {
-          window.parent.postMessage({ 
-            type: 'resized',
-            width: window.innerWidth,
-            height: window.innerHeight
-          }, '*');
-        }
+      // Create renderer with explicit canvas
+      const renderer = new THREE.WebGLRenderer({
+        canvas: canvas,
+        antialias: false,
+        alpha: true,
+        powerPreference: 'default'
       });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(1); // Use lower pixel ratio for better performance
+      
+      // Add light
+      const light = new THREE.AmbientLight(0xffffff);
+      scene.add(light);
+      
+      // Create galaxy particles
+      const galaxyGeometry = new THREE.BufferGeometry();
+      const galaxyPositions = new Float32Array(PARTICLE_COUNT * 3);
+      const galaxyColors = new Float32Array(PARTICLE_COUNT * 3);
+      
+      // Create earth particles
+      const earthGeometry = new THREE.BufferGeometry();
+      const earthPositions = new Float32Array(PARTICLE_COUNT * 3);
+      const earthColors = new Float32Array(PARTICLE_COUNT * 3);
+      
+      // Fill positions and colors
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const i3 = i * 3;
+        
+        // Galaxy positions
+        const radius = 10 + Math.random() * 10;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        
+        galaxyPositions[i3] = radius * Math.sin(phi) * Math.cos(theta);
+        galaxyPositions[i3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+        galaxyPositions[i3 + 2] = radius * Math.cos(phi);
+        
+        // Earth positions
+        const earthPhi = Math.acos(2 * Math.random() - 1);
+        const earthTheta = Math.random() * Math.PI * 2;
+        
+        earthPositions[i3] = EARTH_RADIUS * Math.sin(earthPhi) * Math.cos(earthTheta);
+        earthPositions[i3 + 1] = EARTH_RADIUS * Math.sin(earthPhi) * Math.sin(earthTheta);
+        earthPositions[i3 + 2] = EARTH_RADIUS * Math.cos(earthPhi);
+        
+        // Colors
+        const intensity = 0.5 + Math.random() * 0.5;
+        galaxyColors[i3] = PRIMARY_COLOR.r * intensity;
+        galaxyColors[i3 + 1] = PRIMARY_COLOR.g * intensity;
+        galaxyColors[i3 + 2] = PRIMARY_COLOR.b * intensity;
+        
+        earthColors[i3] = PRIMARY_COLOR.r * intensity;
+        earthColors[i3 + 1] = PRIMARY_COLOR.g * intensity;
+        earthColors[i3 + 2] = PRIMARY_COLOR.b * intensity;
+      }
+      
+      // Set attributes
+      galaxyGeometry.setAttribute('position', new THREE.BufferAttribute(galaxyPositions, 3));
+      galaxyGeometry.setAttribute('color', new THREE.BufferAttribute(galaxyColors, 3));
+      
+      earthGeometry.setAttribute('position', new THREE.BufferAttribute(earthPositions, 3));
+      earthGeometry.setAttribute('color', new THREE.BufferAttribute(earthColors, 3));
+      
+      // Create material
+      const material = new THREE.PointsMaterial({
+        size: 0.08,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8
+      });
+      
+      // Create points
+      const particles = new THREE.Points(galaxyGeometry.clone(), material.clone());
+      scene.add(particles);
+      
+      // Animation variables
+      let phase = 0; // 0: galaxy, 1: transition to earth, 2: earth, 3: transition to galaxy
+      let progress = 0;
+      let elapsedTime = 0;
+      let mouseX = 0;
+      let mouseY = 0;
+      
+      // Mouse tracking
+      document.addEventListener('mousemove', function(event) {
+        mouseX = (event.clientX / width) * 2 - 1;
+        mouseY = -(event.clientY / height) * 2 + 1;
+      });
+      
+      // Handle resize
+      window.addEventListener('resize', function() {
+        const newWidth = container.clientWidth || window.innerWidth;
+        const newHeight = container.clientHeight || window.innerHeight;
+        
+        camera.aspect = newWidth / newHeight;
+        camera.updateProjectionMatrix();
+        
+        renderer.setSize(newWidth, newHeight);
+      });
+      
+      // Animation loop
+      const clock = new THREE.Clock();
+      
+      function animate() {
+        const delta = clock.getDelta();
+        elapsedTime += delta;
+        
+        // Update animation phase
+        if (phase === 0 && elapsedTime > 2) {
+          phase = 1; // Start transition to earth
+        } else if (phase === 1) {
+          progress += delta * 0.2; // 5 seconds transition
+          if (progress >= 1) {
+            progress = 1;
+            phase = 2;
+          }
+        } else if (phase === 2 && elapsedTime > 10) {
+          phase = 3; // Start transition to galaxy
+        } else if (phase === 3) {
+          progress -= delta * 0.25; // 4 seconds transition
+          if (progress <= 0) {
+            progress = 0;
+            phase = 0;
+            elapsedTime = 0;
+          }
+        }
+        
+        // Update positions
+        const positions = particles.geometry.attributes.position.array;
+        
+        for (let i = 0; i < PARTICLE_COUNT; i++) {
+          const i3 = i * 3;
+          
+          // Interpolate between galaxy and earth
+          positions[i3] = galaxyPositions[i3] * (1 - progress) + earthPositions[i3] * progress;
+          positions[i3 + 1] = galaxyPositions[i3 + 1] * (1 - progress) + earthPositions[i3 + 1] * progress;
+          positions[i3 + 2] = galaxyPositions[i3 + 2] * (1 - progress) + earthPositions[i3 + 2] * progress;
+          
+          // Apply hover effect
+          if (Math.abs(mouseX) > 0.1 || Math.abs(mouseY) > 0.1) {
+            const x = positions[i3];
+            const y = positions[i3 + 1];
+            const z = positions[i3 + 2];
+            
+            // Create a 3D point for the particle
+            const particlePos = new THREE.Vector3(x, y, z);
+            
+            // Create a 3D point for the mouse (project into scene)
+            const mousePos = new THREE.Vector3(mouseX * 5, mouseY * 5, 0);
+            
+            // Calculate distance
+            const distance = particlePos.distanceTo(mousePos);
+            
+            // Apply repulsion if close
+            if (distance < 2) {
+              const force = (2 - distance) * 0.05;
+              const direction = new THREE.Vector3().subVectors(particlePos, mousePos).normalize();
+              
+              positions[i3] += direction.x * force;
+              positions[i3 + 1] += direction.y * force;
+              positions[i3 + 2] += direction.z * force;
+            }
+          }
+        }
+        
+        particles.geometry.attributes.position.needsUpdate = true;
+        
+        // Rotate
+        particles.rotation.y += 0.001;
+        
+        // Render
+        renderer.render(scene, camera);
+        
+        // Continue animation
+        requestAnimationFrame(animate);
+      }
+      
+      // Start animation
+      animate();
+      
+      // Notify parent when ready
+      if (window.parent) {
+        window.parent.postMessage({ type: 'ready' }, '*');
+      }
+      
+    } catch (error) {
+      console.error("Animation error:", error);
+      document.getElementById('error-message').style.display = 'block';
+      document.getElementById('animation-container').style.display = 'none';
     }
-  </script>
+  }
+  
+  // Check if WebGL is available
+  function isWebGLAvailable() {
+    try {
+      const canvas = document.createElement('canvas');
+      return !!(
+        window.WebGLRenderingContext && 
+        (canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
+      );
+    } catch (e) {
+      return false;
+    }
+  }
+</script>
 </body>
 </html>
-
